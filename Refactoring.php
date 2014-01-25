@@ -1,5 +1,59 @@
 <?php
 
+abstract class SearchResultRenderer
+{
+    abstract public function listResponse($paginator);
+    abstract public function formResponse();
+
+    public function render($template, $variables)
+    {
+        return new Response($template . json_encode($variables));
+    }
+}
+
+class XmlHttpResultRenderer extends SearchResultRenderer
+{
+    public function listResponse($paginator)
+    {
+        try {
+            return $this->render('ProductBundle:Search:list.html.twig', array(
+                'products' => $paginator->getResults(),
+                'noLayout' => true,
+            ));
+        } catch (\Twig_Error_Runtime $e) {
+            if (!$e->getPrevious() instanceof \Solarium_Client_HttpException) {
+                throw $e;
+            }
+            return new JsonResponse(array(
+                'status' => 'error',
+                'message' => 'Could not connect to the search server',
+            ), 500);
+        }
+    }
+
+    public function formResponse()
+    {
+        return $this->render('ProductBundle:Search:search.html.twig', array(
+            'noLayout' => true,
+        ));
+    }
+}
+
+class HtmlSearchResultRenderer extends SearchResultRenderer
+{
+    public function listResponse($paginator)
+    {
+        return $this->render('ProductBundle:Search:search.html.twig', array(
+            'products' => $paginator->getResults(),
+        ));
+    }
+
+    public function formResponse()
+    {
+        return $this->render('ProductBundle:Search:search.html.twig', array());
+    }
+}
+
 class SearchAdapter
 {
     private $solarium;
@@ -87,64 +141,19 @@ class SearchController extends Controller
 
             $paginator->setCurrentPage($req->get('page', 1), false, true);
 
-            if ($req->getRequestFormat() === 'json') {
-                try {
-                    $result = array(
-                        'results' => array(),
-                        'total' => $paginator->getNbResults(),
-                    );
-                } catch (\Solarium_Client_HttpException $e) {
-                    return new JsonResponse(array(
-                        'status' => 'error',
-                        'message' => 'Could not connect to the search server',
-                    ), 500);
-                }
-
-                foreach ($paginator->getResults() as $product) {
-                    $url = $this->generateUrl('view_product', array('name' => $product->name), true);
-
-                    $result['results'][] = array(
-                        'name' => $product->name,
-                        'description' => $product->description ?: '',
-                        'price' => $product->price,
-                        'url' => $url,
-                    );
-                }
-
-                if ($paginator->hasNextPage()) {
-                    $params = array(
-                        '_format' => 'json',
-                        'q' => $req->get('q'),
-                        'page' => $paginator->getNextPage()
-                    );
-                    if ($tagsFilter) {
-                        $params['tags'] = (array) $tagsFilter;
-                    }
-                    if ($typeFilter) {
-                        $params['type'] = $typeFilter;
-                    }
-                    $result['next'] = $this->generateUrl('search', $params, true);
-                }
-
-                return new JsonResponse($result);
-            }
-
-            if ($req->isXmlHttpRequest()) {
-                return $this->createSearchXmlHttpResponse($paginator);
-            }
-
-            return $this->createSearchHtmlResponse($paginator);
+            return $this->respondTo($req)->listResponse($paginator);
         }
 
+        return $this->respondTo($req)->formResponse();
+    }
+
+    protected function respondTo($req)
+    {
         if ($req->isXmlHttpRequest()) {
-            return $this->createSearchXmlHttpFormResponse();
+            return new XmlHttpResultRenderer();
         }
 
-        if ($req->getRequestFormat() === 'json') {
-            return new JsonResponse(array('error' => 'Missing search query, example: ?q=example'), 400);
-        }
-
-        return $this->createSearchHtmlFormResponse();
+        return new HtmlSearchResultRenderer();
     }
 
     protected function createSearchXmlHttpResponse($paginator)
@@ -187,11 +196,6 @@ class SearchController extends Controller
 
 abstract class Controller
 {
-    public function render($template, $variables)
-    {
-        return new Response($template . json_encode($variables));
-    }
-
     public function generateUrl($route, $variables)
     {
         if ($route == 'search') {

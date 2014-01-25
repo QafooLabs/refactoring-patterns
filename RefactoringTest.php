@@ -38,34 +38,6 @@ class SearchControllerTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals('ProductBundle:Search:search.html.twig{"products":{"0":{"name":"foo","description":"A foo product","price":42},"1":{"name":"bar","description":"A bar product","price":23}}}', $response->getContent());
     }
 
-    public function testControllerWithJsonSearch()
-    {
-        $request = new Request();
-        $request->set('q', 'Hello');
-        $request->setRequestFormat('json');
-
-        $ctrl = $this->createController();
-        $response = $ctrl->searchAction($request);
-
-        $this->assertEquals(array (
-            'results' => array(
-                array(
-                    'name' => 'foo',
-                    'description' => 'A foo product',
-                    'price' => 42,
-                    'url' => '/product/foo',
-                ), array(
-                    'name' => 'bar',
-                    'description' => 'A bar product',
-                    'price' => 23,
-                    'url' => '/product/bar',
-                ),
-            ),
-            'total' => 2,
-            'next' => '/search',
-        ), $response->getContent());
-    }
-
     public function testControllerWithXmlHttpRequest()
     {
         $request = new Request();
