@@ -16,14 +16,6 @@ class SearchController extends Controller
             $solarium = new SolariumClient('localhost:8080');
             $select = $solarium->createSelect();
 
-            // configure dismax
-            $dismax = $select->getDisMax();
-            $dismax->setQueryFields(array('name^4', 'description', 'tags', 'text', 'text_ngram', 'name_split^2'));
-            $dismax->setPhraseFields(array('description'));
-            $dismax->setBoostFunctions(array('log(trendiness)^10'));
-            $dismax->setMinimumMatch(1);
-            $dismax->setQueryParser('edismax');
-
             // filter by type
             if ($typeFilter) {
                 $filterQueryTerm = sprintf('type:%s', $select->getHelper()->escapeTerm($typeFilter));
@@ -51,48 +43,6 @@ class SearchController extends Controller
             $paginator->setMaxPerPage(15);
             $paginator->setCurrentPage($req->get('page', 1), false, true);
 
-            if ($req->getRequestFormat() === 'json') {
-                try {
-                    $result = array(
-                        'results' => array(),
-                        'total' => $paginator->getNbResults(),
-                    );
-                } catch (\Solarium_Client_HttpException $e) {
-                    return new JsonResponse(array(
-                        'status' => 'error',
-                        'message' => 'Could not connect to the search server',
-                    ), 500);
-                }
-
-                foreach ($paginator->getResults() as $product) {
-                    $url = $this->generateUrl('view_product', array('name' => $product->name), true);
-
-                    $result['results'][] = array(
-                        'name' => $product->name,
-                        'description' => $product->description ?: '',
-                        'price' => $product->price,
-                        'url' => $url,
-                    );
-                }
-
-                if ($paginator->hasNextPage()) {
-                    $params = array(
-                        '_format' => 'json',
-                        'q' => $req->get('q'),
-                        'page' => $paginator->getNextPage()
-                    );
-                    if ($tagsFilter) {
-                        $params['tags'] = (array) $tagsFilter;
-                    }
-                    if ($typeFilter) {
-                        $params['type'] = $typeFilter;
-                    }
-                    $result['next'] = $this->generateUrl('search', $params, true);
-                }
-
-                return new JsonResponse($result);
-            }
-
             if ($req->isXmlHttpRequest()) {
                 try {
                     return $this->render('ProductBundle:Search:list.html.twig', array(
@@ -119,10 +69,6 @@ class SearchController extends Controller
             return $this->render('ProductBundle:Search:search.html.twig', array(
                 'noLayout' => true,
             ));
-        }
-
-        if ($req->getRequestFormat() === 'json') {
-            return new JsonResponse(array('error' => 'Missing search query, example: ?q=example'), 400);
         }
 
         return $this->render('ProductBundle:Search:search.html.twig', array());
